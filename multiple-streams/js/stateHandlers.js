@@ -40,6 +40,35 @@ var stateHandlers = {
             }
             controller.play.call(this);
         },
+        'PlaySpecificAudio':function() {
+            
+            var titleSlot = this.event.request.intent.slots.Item.value.toLowerCase(); 
+            
+            var songURL = findSongUrl(titleSlot);
+            
+            if(songURL !== null) {
+                if (!this.attributes['playOrder']) {                
+                	// Initialize Attributes if undefined.               
+                	this.attributes['playOrder'] = Array.apply(null, {length: audioData.length}).map(Number.call, Number);                
+                	this.attributes['index'] = 0;               
+                	this.attributes['offsetInMilliseconds'] = 0;                
+                	this.attributes['loop'] = true;               
+                	this.attributes['shuffle'] = true;               
+                	this.attributes['playbackIndexChanged'] = true;                
+                	//  Change state to START_MODE                
+                	this.handler.state = constants.states.START_MODE;               
+                }
+            }else{
+                this.response.speak('Sorry I could not find ' + titleSlot + '. Say again').listen('You can say "ask my skill I want to hear city"');
+                this.emit(':responseReady');
+            }
+            var offsetInMilliseconds = 0;
+            var playBehavior = "REPLACE_ALL";
+            var token = String(this.attributes['playOrder'][this.attributes['index']]);
+             
+            this.response.audioPlayerPlay(playBehavior, songURL, token, null, offsetInMilliseconds);
+            this.emit(':responseReady');              
+        },
         'AMAZON.HelpIntent' : function () {
             var message = 'Welcome to the AWS Podcast. You can say, play the audio, to begin the podcast.';
             this.response.speak(message).listen(message);
@@ -95,6 +124,36 @@ var stateHandlers = {
             this.emit(':responseReady');
         },
         'PlayAudio' : function () { controller.play.call(this) },
+        'PlaySpecificAudio':function() {
+            
+            var titleSlot = this.event.request.intent.slots.Item.value.toLowerCase(); 
+            
+            var songURL = findSongUrl(titleSlot);
+            
+            if(songURL !== null) {
+                if (!this.attributes['playOrder']) {                
+                	// Initialize Attributes if undefined.               
+                	this.attributes['playOrder'] = Array.apply(null, {length: audioData.length}).map(Number.call, Number);                
+                	this.attributes['index'] = 0;               
+                	this.attributes['offsetInMilliseconds'] = 0;                
+                	this.attributes['loop'] = true;               
+                	this.attributes['shuffle'] = true;               
+                	this.attributes['playbackIndexChanged'] = true;                
+                	//  Change state to START_MODE                
+                	this.handler.state = constants.states.START_MODE;               
+                }
+            }else{
+                this.response.speak('Sorry I could not find ' + titleSlot + '. Say again').listen('You can say "ask my skill I want to hear city"');
+                this.emit(':responseReady');
+            }
+            var offsetInMilliseconds = 0;
+            var playBehavior = "REPLACE_ALL";
+            var token = String(this.attributes['playOrder'][this.attributes['index']]);
+             
+            this.response.audioPlayerPlay(playBehavior, songURL, token, null, offsetInMilliseconds);
+            this.emit(':responseReady');              
+        },
+        
         'AMAZON.NextIntent' : function () { controller.playNext.call(this) },
         'AMAZON.PreviousIntent' : function () { controller.playPrevious.call(this) },
         'AMAZON.PauseIntent' : function () { controller.stop.call(this) },
@@ -192,9 +251,9 @@ var controller = function () {
                 this.attributes['playbackIndexChanged'] = true;
                 this.attributes['playbackFinished'] = false;
             }
-
             var token = String(this.attributes['playOrder'][this.attributes['index']]);
             var playBehavior = 'REPLACE_ALL';
+            
             var podcast = audioData[this.attributes['playOrder'][this.attributes['index']]];
             var offsetInMilliseconds = this.attributes['offsetInMilliseconds'];
             // Since play behavior is REPLACE_ALL, enqueuedToken attribute need to be set to null.
@@ -353,4 +412,14 @@ function shuffleOrder(callback) {
         array[randomIndex] = temp;
     }
     callback(array);
+}
+
+function findSongUrl(slotValue) {
+    
+    for(var i=0; i<audioData.length; i++) {
+        if(audioData[i].title === slotValue)
+                return audioData[i].url;
+    }
+    
+    return null;
 }
