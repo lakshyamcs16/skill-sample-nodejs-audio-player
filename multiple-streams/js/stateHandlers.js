@@ -3,6 +3,7 @@
 var Alexa = require('alexa-sdk');
 var audioData = require('./audioAssets');
 var constants = require('./constants');
+var audioTitle = '', audioIndex = 0, songURL ;
 
 var stateHandlers = {
     startModeIntentHandlers : Alexa.CreateStateHandler(constants.states.START_MODE, {
@@ -17,10 +18,11 @@ var stateHandlers = {
             this.attributes['loop'] = false; //do not loop on the list of podcast
             this.attributes['shuffle'] = false;
             this.attributes['playbackIndexChanged'] = true;
+            this.attributes['specificAudio'] = false;
             //  Change state to START_MODE
             this.handler.state = constants.states.START_MODE;
 
-            var message = 'Welcome to the AWS Podcast. You can say, play the audio to begin the podcast.';
+            var message = 'Welcome to the Sleeping Sounds. You can say, play the audio to begin the relaxation therapy.';
             var reprompt = 'You can say, play the audio, to begin.';
 
             this.response.speak(message).listen(reprompt);
@@ -35,6 +37,7 @@ var stateHandlers = {
                 this.attributes['loop'] = false; //do not loop on the list of podcast
                 this.attributes['shuffle'] = false;
                 this.attributes['playbackIndexChanged'] = true;
+                this.attributes['specificAudio'] = false;
                 //  Change state to START_MODE
                 this.handler.state = constants.states.START_MODE;
             }
@@ -44,7 +47,7 @@ var stateHandlers = {
             
             var titleSlot = this.event.request.intent.slots.Item.value.toLowerCase(); 
             
-            var songURL = findSongUrl(titleSlot);
+            songURL = findSongUrl(titleSlot);
             
             if(songURL !== null) {
                 if (!this.attributes['playOrder']) {                
@@ -54,23 +57,45 @@ var stateHandlers = {
                 	this.attributes['offsetInMilliseconds'] = 0;                
                 	this.attributes['loop'] = true;               
                 	this.attributes['shuffle'] = true;               
-                	this.attributes['playbackIndexChanged'] = true;                
+                	this.attributes['playbackIndexChanged'] = true;
+                	this.attributes['specificAudio'] = true;
                 	//  Change state to START_MODE                
                 	this.handler.state = constants.states.START_MODE;               
                 }
             }else{
-                this.response.speak('Sorry I could not find ' + titleSlot + '. Say again').listen('You can say "ask my skill I want to hear city"');
+                this.response.speak('Sorry I could not find ' + titleSlot + '. Say again').listen('You can say "ask sleeping sounds I want to hear titanic"');
                 this.emit(':responseReady');
             }
-            var offsetInMilliseconds = 0;
+            this.handler.state = constants.states.PLAY_MODE;
+
+          
+            if (this.attributes['playbackFinished']) {
+                // Reset to top of the playlist when reached end.
+                this.attributes['index'] = 0;
+                this.attributes['offsetInMilliseconds'] = 0;
+                this.attributes['playbackIndexChanged'] = true;
+                this.attributes['playbackFinished'] = false;
+            }
+            
+            this.attributes['index'] = audioIndex;
+        	this.attributes['specificAudio'] = true;
+        	 
+            var offsetInMilliseconds = this.attributes['offsetInMilliseconds'];
             var playBehavior = "REPLACE_ALL";
             var token = String(this.attributes['playOrder'][this.attributes['index']]);
-             
-            this.response.audioPlayerPlay(playBehavior, songURL, token, null, offsetInMilliseconds);
-            this.emit(':responseReady');              
+            
+             if (canThrowCard.call(this)) {
+                var cardTitle = 'Playing ' + audioTitle;
+                var cardContent = 'Playing ' + audioTitle;
+                this.response.cardRenderer(cardTitle, cardContent, null);
+            }
+            
+            var message = "This is " + audioTitle; 
+            this.response.speak(message).audioPlayerPlay(playBehavior, songURL, token, null, offsetInMilliseconds);
+            this.emit(':responseReady');
         },
         'AMAZON.HelpIntent' : function () {
-            var message = 'Welcome to the AWS Podcast. You can say, play the audio, to begin the podcast.';
+            var message = 'Welcome to the Sleeping Sounds. You can say, play the audio, to begin the relaxing list of music.';
             this.response.speak(message).listen(message);
             this.emit(':responseReady');
         },
@@ -87,6 +112,32 @@ var stateHandlers = {
         'SessionEndedRequest' : function () {
             // No session ended logic
         },
+        'AMAZON.NextIntent' : function () { controller.playNext.call(this) },
+        'AMAZON.PreviousIntent' : function () { controller.playPrevious.call(this) },
+        'AMAZON.PauseIntent' : function () { controller.stop.call(this); },
+        'AMAZON.StopIntent' : function () { controller.stop.call(this) },
+        'AMAZON.CancelIntent' : function () { controller.stop.call(this) },
+        'AMAZON.ResumeIntent' : function () {
+            
+            if(this.attributes['specificAudio']) {
+                var playBehavior = "REPLACE_ALL";
+                var token = String(this.attributes['playOrder'][this.attributes['index']]);
+                var offsetInMilliseconds = this.attributes['offsetInMilliseconds'];
+                var podcast = audioData[this.attributes['playOrder'][this.attributes['index']]];
+                
+                var message = "This is " + audioTitle; 
+                this.response.speak(message).audioPlayerPlay(playBehavior, podcast.url, token, null, offsetInMilliseconds);
+                this.emit(':responseReady');
+            }else {
+                controller.play.call(this);
+            }
+            
+        },
+        'AMAZON.LoopOnIntent' : function () { controller.loopOn.call(this) },
+        'AMAZON.LoopOffIntent' : function () { controller.loopOff.call(this) },
+        'AMAZON.ShuffleOnIntent' : function () { controller.shuffleOn.call(this) },
+        'AMAZON.ShuffleOffIntent' : function () { controller.shuffleOff.call(this) },
+        'AMAZON.StartOverIntent' : function () { controller.startOver.call(this) },
         'Unhandled' : function () {
             var message = 'Sorry, I could not understand. Please say, play the audio, to begin the audio.';
             this.response.speak(message).listen(message);
@@ -111,7 +162,7 @@ var stateHandlers = {
             var reprompt;
             if (this.attributes['playbackFinished']) {
                 this.handler.state = constants.states.START_MODE;
-                message = 'Welcome to the AWS Podcast. You can say, play the audio to begin the podcast.';
+                message = 'Welcome to the Sleeping Sounds. You can say, play the audio to begin the relaxation therapy.';
                 reprompt = 'You can say, play the audio, to begin.';
             } else {
                 this.handler.state = constants.states.RESUME_DECISION_MODE;
@@ -138,7 +189,8 @@ var stateHandlers = {
                 	this.attributes['offsetInMilliseconds'] = 0;                
                 	this.attributes['loop'] = true;               
                 	this.attributes['shuffle'] = true;               
-                	this.attributes['playbackIndexChanged'] = true;                
+                	this.attributes['playbackIndexChanged'] = true;
+                	this.attributes['specificAudio'] = true;
                 	//  Change state to START_MODE                
                 	this.handler.state = constants.states.START_MODE;               
                 }
@@ -146,20 +198,52 @@ var stateHandlers = {
                 this.response.speak('Sorry I could not find ' + titleSlot + '. Say again').listen('You can say "ask my skill I want to hear city"');
                 this.emit(':responseReady');
             }
-            var offsetInMilliseconds = 0;
+            if (this.attributes['playbackFinished']) {
+                // Reset to top of the playlist when reached end.
+                this.attributes['index'] = 0;
+                this.attributes['offsetInMilliseconds'] = 0;
+                this.attributes['playbackIndexChanged'] = true;
+                this.attributes['playbackFinished'] = false;
+            }
+            
+            this.attributes['index'] = audioIndex;
+        	this.attributes['specificAudio'] = true;
+            
+            var offsetInMilliseconds = this.attributes['offsetInMilliseconds'];
             var playBehavior = "REPLACE_ALL";
             var token = String(this.attributes['playOrder'][this.attributes['index']]);
-             
-            this.response.audioPlayerPlay(playBehavior, songURL, token, null, offsetInMilliseconds);
-            this.emit(':responseReady');              
+            
+            if (canThrowCard.call(this)) {
+                var cardTitle = 'Playing ' + audioTitle;
+                var cardContent = 'Playing ' + audioTitle;
+                this.response.cardRenderer(cardTitle, cardContent, null);
+            }
+            
+            var message = "This is " + audioTitle; 
+            this.response.speak(message).audioPlayerPlay(playBehavior, songURL, token, null, offsetInMilliseconds);
+            this.emit(':responseReady');
         },
         
         'AMAZON.NextIntent' : function () { controller.playNext.call(this) },
         'AMAZON.PreviousIntent' : function () { controller.playPrevious.call(this) },
-        'AMAZON.PauseIntent' : function () { controller.stop.call(this) },
+        'AMAZON.PauseIntent' : function () { controller.stop.call(this); },
         'AMAZON.StopIntent' : function () { controller.stop.call(this) },
         'AMAZON.CancelIntent' : function () { controller.stop.call(this) },
-        'AMAZON.ResumeIntent' : function () { controller.play.call(this) },
+        'AMAZON.ResumeIntent' : function () {  
+            if(this.attributes['specificAudio']) {
+            
+                var playBehavior = "REPLACE_ALL";
+                var token = String(this.attributes['playOrder'][this.attributes['index']]);
+                var offsetInMilliseconds = this.attributes['offsetInMilliseconds'];
+                var podcast = audioData[this.attributes['playOrder'][this.attributes['index']]];
+                 
+                var message = "This is " + audioTitle; 
+                this.response.speak(message).audioPlayerPlay(playBehavior, podcast.url, token, null, offsetInMilliseconds);
+                this.emit(':responseReady');
+            }else {
+                controller.play.call(this);
+            }
+         },
         'AMAZON.LoopOnIntent' : function () { controller.loopOn.call(this) },
         'AMAZON.LoopOffIntent' : function () { controller.loopOff.call(this) },
         'AMAZON.ShuffleOnIntent' : function () { controller.shuffleOn.call(this) },
@@ -167,7 +251,7 @@ var stateHandlers = {
         'AMAZON.StartOverIntent' : function () { controller.startOver.call(this) },
         'AMAZON.HelpIntent' : function () {
             // This will called while audio is playing and a user says "ask <invocation_name> for help"
-            var message = 'You are listening to the AWS Podcast. You can say, Next or Previous to navigate through the playlist. ' +
+            var message = 'You are listening to the Sleeping sounds. You can say, Next or Previous to navigate through the playlist. ' +
                 'At any time, you can say Pause to pause the audio and Resume to resume.';
             this.response.speak(message).listen(message);
             this.emit(':responseReady');
@@ -244,6 +328,7 @@ var controller = function () {
              */
             this.handler.state = constants.states.PLAY_MODE;
 
+          
             if (this.attributes['playbackFinished']) {
                 // Reset to top of the playlist when reached end.
                 this.attributes['index'] = 0;
@@ -264,8 +349,9 @@ var controller = function () {
                 var cardContent = 'Playing ' + podcast.title;
                 this.response.cardRenderer(cardTitle, cardContent, null);
             }
-
-            var message = "This is " + audioData[this.attributes['index']].title;
+            
+            this.attributes['specificAudio'] = false;
+            var message = "This music is of" + audioData[this.attributes['index']].title;
             this.response.speak(message).audioPlayerPlay(playBehavior, podcast.url, token, null, offsetInMilliseconds);
             this.emit(':responseReady');
         },
@@ -417,8 +503,11 @@ function shuffleOrder(callback) {
 function findSongUrl(slotValue) {
     
     for(var i=0; i<audioData.length; i++) {
-        if(audioData[i].title === slotValue)
+        if(audioData[i].title === slotValue){
+                audioIndex = i;
+                audioTitle = audioData[i].title;
                 return audioData[i].url;
+        }
     }
     
     return null;
